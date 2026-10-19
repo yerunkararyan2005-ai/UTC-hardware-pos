@@ -1,0 +1,71 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Shop {
+  id          String   @id @default(uuid())
+  shopName    String
+  shopId      String   @unique
+  ownerName   String
+  contact     String
+  email       String
+  address     String
+  gstin       String?
+  description String?
+  isActive    Boolean  @default(true)  // <-- Yeh add karna hai
+  createdAt   DateTime @default(now())
+  users       User[]
+  products    Product[]
+  invoices    Invoice[]
+}
+
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String
+  role      String   @default("OWNER")
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+model Product {
+  id       String @id @default(uuid())
+  name     String
+  category String
+  price    Float
+  stock    Int
+  unit     String @default("Pcs")
+  image    String?
+  shopId   String
+  shop     Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id          String        @id @default(uuid())
+  billNumber  Int
+  invoiceCode String
+  customer    String
+  phone       String
+  subtotal    Float
+  tax         Float
+  total       Float
+  mode        String
+  shopId      String
+  shop        Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  items       InvoiceItem[]
+  createdAt   DateTime      @default(now())
+}
+
+model InvoiceItem {
+  id        String  @id @default(uuid())
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  name      String
+  price     Float
+  qty       Int
+}
