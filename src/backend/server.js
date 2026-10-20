@@ -4,7 +4,7 @@ const { PrismaClient } = require('@prisma/client');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 const prisma = new PrismaClient();
 const app = express();
@@ -13,20 +13,12 @@ app.use(express.json());
 app.use(cors());
 
 const JWT_SECRET = process.env.JWT_SECRET || 'UTC_MULTI_SHOP_SECRET_2026';
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-// Configure Nodemailer for Free Email OTP
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
-});
-
-// 1. Send Real Email OTP API (Optimized & Non-Blocking)
+// 1. Send Real Email OTP API using Resend (Fast & Non-Blocking)
 app.post('/api/send-otp', async (req, res) => {
   try {
-    console.log("--> OTP request aayi hai email ke liye:", req.body.email);
+    console.log("--> Resend OTP request aayi hai email ke liye:", req.body.email);
     const { email } = req.body;
     if (!email) {
       return res.status(400).json({ success: false, error: 'Email is required' });
@@ -34,19 +26,17 @@ app.post('/api/send-otp', async (req, res) => {
 
     const otp = Math.floor(1000 + Math.random() * 9000);
 
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: 'UTC Hardware POS - Email Verification OTP',
-      text: `Your 4-digit verification OTP for UTC Multi-Shop POS registration is: ${otp}. Valid for 10 minutes.`
-    };
-
     // Turant response bhej do taaki frontend par loading atke nahi
     res.json({ success: true, otp, message: 'OTP sent successfully to email!' });
 
-    // Background me mail dispatch karo
-    transporter.sendMail(mailOptions).catch(err => {
-      console.log("--> Background email send error:", err.message);
+    // Background me Resend API se mail dispatch karo
+    resend.emails.send({
+      from: 'onboarding@resend.dev',
+      to: email,
+      subject: 'UTC Hardware POS - Email Verification OTP',
+      html: `<p>Your 4-digit verification OTP for UTC Multi-Shop POS registration is: <strong>${otp}</strong>. Valid for 10 minutes.</p>`
+    }).catch(err => {
+      console.log("--> Resend background error:", err.message);
     });
 
   } catch (error) {
