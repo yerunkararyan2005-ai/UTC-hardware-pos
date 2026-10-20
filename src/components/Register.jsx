@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 
 // Dynamic API Base URL configuration for Production (Render) & Local development
-const API_BASE_URL = import.meta.env?.VITE_API_URL || process.env?.REACT_APP_API_URL || 'https://utc-hardware-pos.onrender.com';
-
+// Direct Production API URL for Render
+const API_BASE_URL = 'https://utc-hardware-pos.onrender.com';
 export default function Register({ onRegisterSuccess }) {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
