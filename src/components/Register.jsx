@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 
+// Dynamic API Base URL configuration for Production (Render) & Local development
+const API_BASE_URL = import.meta.env?.VITE_API_URL || process.env?.REACT_APP_API_URL || 'https://utc-hardware-pos.onrender.com';
+
 export default function Register({ onRegisterSuccess }) {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
@@ -46,7 +49,7 @@ export default function Register({ onRegisterSuccess }) {
       
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:5000/api/send-otp', {
+        const response = await fetch(`${API_BASE_URL}/api/send-otp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: formData.email })
@@ -63,7 +66,7 @@ export default function Register({ onRegisterSuccess }) {
         }
       } catch (err) {
         setLoading(false);
-        alert('Server connection error! Make sure backend server is running on port 5000.');
+        alert('Server connection error! Make sure backend server is running.');
       }
     }
   };
@@ -73,7 +76,7 @@ export default function Register({ onRegisterSuccess }) {
     if (parseInt(enteredOtp) === sentOtp) {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:5000/api/register', {
+        const response = await fetch(`${API_BASE_URL}/api/register`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData)
@@ -89,7 +92,7 @@ export default function Register({ onRegisterSuccess }) {
         }
       } catch (err) {
         setLoading(false);
-        alert('Server connection error! Make sure backend is running on port 5000.');
+        alert('Server connection error! Make sure backend is running.');
       }
     } else {
       alert('Invalid OTP! Please check and try again.');

@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
+// Dynamic API Base URL configuration for Production (Render) & Local development
+const API_BASE_URL = import.meta.env?.VITE_API_URL || process.env?.REACT_APP_API_URL || 'https://utc-hardware-pos.onrender.com';
+
 export default function App() {
   const [currentView, setCurrentView] = useState(() => {
     return localStorage.getItem('utc_current_view') || 'register';
@@ -125,7 +128,7 @@ export default function App() {
     
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:5001/api/send-otp', {
+      const response = await fetch(`${API_BASE_URL}/api/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: regData.shopEmail })
@@ -142,7 +145,7 @@ export default function App() {
       }
     } catch (err) {
       setLoading(false);
-      alert('Server connection error! Make sure backend server is running on port 5001.');
+      alert('Server connection error! Make sure backend server is running.');
     }
   };
 
@@ -160,7 +163,7 @@ export default function App() {
 
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:5001/api/register', {
+      const response = await fetch(`${API_BASE_URL}/api/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(regData)
@@ -182,7 +185,7 @@ export default function App() {
       }
     } catch (err) {
       setLoading(false);
-      alert('Server connection error! Make sure backend is running on port 5001.');
+      alert('Server connection error! Make sure backend is running.');
     }
   };
 
@@ -190,7 +193,7 @@ export default function App() {
     e.preventDefault();
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:5001/api/login', {
+      const response = await fetch(`${API_BASE_URL}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(loginForm)
@@ -212,7 +215,6 @@ export default function App() {
         });
         localStorage.setItem('utc_token', data.token);
         
-        // Check if this shop has products, if not reset categories to empty
         if (products.length === 0) {
           setCategories([]);
           localStorage.removeItem('utc_categories');
@@ -404,8 +406,8 @@ export default function App() {
             <div class="line"></div>
             <div><b>Subtotal:</b> ₹${inv.subtotal.toFixed(2)}</div>
             ${inv.gstPercent > 0 ? `
-              <div><b>CGST (${inv.gstPercent/2}%):</b> ₹${cgst}</div>
-              <div><b>SGST (${inv.gstPercent/2}%):</b> ₹${sgst}</div>
+              <div><b>CGST (${inv.gstPercent/2}\%):</b> ₹${cgst}</div>
+              <div><b>SGST (${inv.gstPercent/2}\%):</b> ₹${sgst}</div>
             ` : ''}
             <div style="font-size: 13px;" class="bold">GRAND TOTAL: ₹${inv.total.toFixed(2)}</div>
             <div class="line"></div>
