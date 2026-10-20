@@ -23,11 +23,15 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-// 1. Send Real Email OTP API
+// 1. Send Real Email OTP API (Optimized & Non-Blocking)
 app.post('/api/send-otp', async (req, res) => {
   try {
     console.log("--> OTP request aayi hai email ke liye:", req.body.email);
     const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email is required' });
+    }
+
     const otp = Math.floor(1000 + Math.random() * 9000);
 
     const mailOptions = {
@@ -37,16 +41,21 @@ app.post('/api/send-otp', async (req, res) => {
       text: `Your 4-digit verification OTP for UTC Multi-Shop POS registration is: ${otp}. Valid for 10 minutes.`
     };
 
-    await transporter.sendMail(mailOptions);
-    console.log("--> Email successfully send ho gaya!");
+    // Turant response bhej do taaki frontend par loading atke nahi
     res.json({ success: true, otp, message: 'OTP sent successfully to email!' });
+
+    // Background me mail dispatch karo
+    transporter.sendMail(mailOptions).catch(err => {
+      console.log("--> Background email send error:", err.message);
+    });
+
   } catch (error) {
     console.log("--> Email send karne me error aaya:", error.message);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// 2. Register Shop & Owner (Updated mapping for frontend fields)
+// 2. Register Shop & Owner
 app.post('/api/register', async (req, res) => {
   try {
     console.log("--> Register request aayi hai:", req.body);
