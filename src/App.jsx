@@ -37,10 +37,11 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('billing');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Products & Categories state
+  // Products, Categories & Search state
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [newProd, setNewProd] = useState({ name: '', category: '', price: '', stock: '', unit: 'Pcs', image: '' });
   const [customCategoryInput, setCustomCategoryInput] = useState('');
@@ -86,7 +87,7 @@ export default function App() {
     setBillGstPercent(settings.gstPercent);
   }, [settings.gstPercent]);
 
-  // Fetch products and categories from Firebase Firestore whenever shopId changes
+  // Fetch products from Firebase Firestore
   useEffect(() => {
     const fetchShopDataFromFirebase = async () => {
       if (!regData.shopId) return;
@@ -498,7 +499,13 @@ export default function App() {
     }
   };
 
-  const filteredProducts = selectedCategory === "All" ? products : products.filter(p => p.category === selectedCategory);
+  // Instant Search & Category Filtering Logic
+  const filteredProducts = products.filter(p => {
+    const matchesCategory = selectedCategory === "All" || p.category === selectedCategory;
+    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          p.category.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
   const filteredInvoices = invoices.filter(inv => {
     if (!dateRange.from || !dateRange.to) return true;
@@ -690,7 +697,13 @@ export default function App() {
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
           <div className="flex-1 flex flex-col p-3 sm:p-4 overflow-y-auto">
             <div className="mb-3">
-              <input type="text" placeholder={settings.barcodeScannerEnabled ? "Barcode Scanner Active..." : "Search items by name..."} className="w-full px-3 py-2.5 text-sm border rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-[#6B1D2F]" />
+              <input 
+                type="text" 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={settings.barcodeScannerEnabled ? "Barcode Scanner Active..." : "Search items by name (e.g. pipe, elbow)..."} 
+                className="w-full px-3 py-2.5 text-sm border rounded-xl bg-white shadow-sm focus:ring-2 focus:ring-[#6B1D2F]" 
+              />
             </div>
 
             <div className="flex flex-wrap gap-2 pb-2 mb-3">
@@ -702,9 +715,9 @@ export default function App() {
 
             {filteredProducts.length === 0 ? (
               <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-gray-300 mt-4">
-                <p className="text-gray-500 font-bold text-sm mb-1">No products found in this shop!</p>
-                <p className="text-gray-400 text-xs mb-3">Go to "Add Product" tab to add your shop inventory.</p>
-                <button onClick={() => setActiveTab('products')} className="bg-[#6B1D2F] text-white px-4 py-2 rounded-xl text-xs font-bold cursor-pointer">➕ Add First Product</button>
+                <p className="text-gray-500 font-bold text-sm mb-1">No products found matching your search!</p>
+                <p className="text-gray-400 text-xs mb-3">Try searching another item or add a new product.</p>
+                <button onClick={() => setActiveTab('products')} className="bg-[#6B1D2F] text-white px-4 py-2 rounded-xl text-xs font-bold cursor-pointer">➕ Add New Product</button>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
