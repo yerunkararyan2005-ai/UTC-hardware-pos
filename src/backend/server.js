@@ -4,7 +4,6 @@ const { PrismaClient } = require('@prisma/client');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { Resend } = require('resend');
 
 const prisma = new PrismaClient();
 const app = express();
@@ -13,43 +12,19 @@ app.use(express.json());
 app.use(cors());
 
 const JWT_SECRET = process.env.JWT_SECRET || 'UTC_MULTI_SHOP_SECRET_2026';
-const resend = new Resend(process.env.RESEND_API_KEY);
 
-// 1. Send Real Email OTP API using Resend (Fast & Non-Blocking)
-app.post('/api/send-otp', async (req, res) => {
-  try {
-    console.log("--> Resend OTP request aayi hai email ke liye:", req.body.email);
-    const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ success: false, error: 'Email is required' });
-    }
-
-    const otp = Math.floor(1000 + Math.random() * 9000);
-
-    // Turant response bhej do taaki frontend par loading atke nahi
-    res.json({ success: true, otp, message: 'OTP sent successfully to email!' });
-
-    // Background me Resend API se mail dispatch karo
-    resend.emails.send({
-      from: 'onboarding@resend.dev',
-      to: email,
-      subject: 'UTC Hardware POS - Email Verification OTP',
-      html: `<p>Your 4-digit verification OTP for UTC Multi-Shop POS registration is: <strong>${otp}</strong>. Valid for 10 minutes.</p>`
-    }).catch(err => {
-      console.log("--> Resend background error:", err.message);
-    });
-
-  } catch (error) {
-    console.log("--> Email send karne me error aaya:", error.message);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-// 2. Register Shop & Owner
+// 1. Register Shop & Owner (Direct without OTP)
 app.post('/api/register', async (req, res) => {
   try {
     console.log("--> Register request aayi hai:", req.body);
     const { shopName, shopId, ownerName, contactNumber, shopEmail, address, gstin, description, username, password } = req.body;
+    
+    // Check if username already exists
+    const existingUser = await prisma.user.findUnique({ where: { username } });
+    if (existingUser) {
+      return res.status(400).json({ success: false, error: 'Username pehle se hi taken hai. Dusra username use karein.' });
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const shop = await prisma.shop.create({
@@ -75,7 +50,7 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-// 3. Login (With Shop Block/Active Check)
+// 2. Login (With Shop Block/Active Check)
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -96,7 +71,7 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// 4. Get Products
+// 3. Get Products by Shop ID
 app.get('/api/products/:shopId', async (req, res) => {
   try {
     const { shopId } = req.params;
@@ -107,7 +82,7 @@ app.get('/api/products/:shopId', async (req, res) => {
   }
 });
 
-// 5. Add Product
+// 4. Add Product
 app.post('/api/products', async (req, res) => {
   try {
     const { name, category, price, stock, unit, image, shopId } = req.body;
@@ -120,7 +95,7 @@ app.post('/api/products', async (req, res) => {
   }
 });
 
-// 6. Generate Invoice
+// 5. Generate Invoice
 app.post('/api/invoices', async (req, res) => {
   try {
     const { shopId, customer, phone, subtotal, tax, total, mode, items } = req.body;
@@ -159,7 +134,7 @@ app.post('/api/invoices', async (req, res) => {
   }
 });
 
-// 7. Block / Unblock Shop API (Admin)
+// 6. Block / Unblock Shop API (Admin)
 app.patch('/api/admin/shop/:id/status', async (req, res) => {
   try {
     const { isActive } = req.body;
