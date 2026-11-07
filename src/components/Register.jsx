@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 
+// Dynamic API Base URL configuration for Production (Render) & Local development
 const API_BASE_URL = 'https://utc-hardware-pos.onrender.com';
 
 export default function Register({ onRegisterSuccess }) {
@@ -29,10 +30,12 @@ export default function Register({ onRegisterSuccess }) {
       alert('Invalid UTC Master Agency Code! Please enter valid master code.');
       return;
     }
-    if (!formData.shopName || !formData.ownerName || !formData.contact || !formData.shopId) {
+    if (!formData.shopName || !formData.ownerName || !formData.contact) {
       alert('Please fill all required shop details!');
       return;
     }
+    const generatedId = formData.shopName.toLowerCase().replace(/\s+/g, '_') + '_' + Math.floor(100 + Math.random() * 900);
+    setFormData(prev => ({ ...prev, shopId: generatedId }));
     setStep(2);
   };
 
@@ -81,7 +84,7 @@ export default function Register({ onRegisterSuccess }) {
           <p className="text-sm sm:text-base text-[#736B63] mt-1">Initialize your high-performance UTC Hardware POS lifetime license</p>
         </div>
 
-        {/* Step Indicator Bar */}
+        {/* Step Indicator Bar (2 Steps) */}
         <div className="flex items-center justify-between mb-8 px-6 sm:px-24">
           <div className="flex items-center space-x-2.5">
             <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${step >= 1 ? 'bg-[#6B1D2F] text-white shadow-md' : 'bg-gray-200 text-gray-500'}`}>1</span>
@@ -125,22 +128,6 @@ export default function Register({ onRegisterSuccess }) {
                 />
               </div>
               <div>
-                <label className="block text-xs sm:text-sm font-bold text-[#595048] mb-1.5">Shop ID (Unique) *</label>
-                <input 
-                  type="text" 
-                  name="shopId"
-                  autoComplete="off"
-                  placeholder="aaijee_hardware_01" 
-                  value={formData.shopId}
-                  onChange={handleChange}
-                  required
-                  className="w-full text-sm sm:text-base bg-white border border-[#E2D8CC] rounded-xl px-4 py-3 text-[#2C2621] focus:ring-2 focus:ring-[#6B1D2F] focus:outline-none transition shadow-sm"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
                 <label className="block text-xs sm:text-sm font-bold text-[#595048] mb-1.5">Owner Name *</label>
                 <input 
                   type="text" 
@@ -153,26 +140,27 @@ export default function Register({ onRegisterSuccess }) {
                   className="w-full text-sm sm:text-base bg-white border border-[#E2D8CC] rounded-xl px-4 py-3 text-[#2C2621] focus:ring-2 focus:ring-[#6B1D2F] focus:outline-none transition shadow-sm"
                 />
               </div>
-              <div>
-                <label className="block text-xs sm:text-sm font-bold text-[#595048] mb-1.5">Contact Number *</label>
-                <input 
-                  type="tel" 
-                  name="contact"
-                  autoComplete="off"
-                  placeholder="9876543210" 
-                  value={formData.contact}
-                  onChange={handleChange}
-                  required
-                  className="w-full text-sm sm:text-base bg-white border border-[#E2D8CC] rounded-xl px-4 py-3 text-[#2C2621] focus:ring-2 focus:ring-[#6B1D2F] focus:outline-none transition shadow-sm"
-                />
-              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs sm:text-sm font-bold text-[#595048] mb-1.5">Contact Number *</label>
+              <input 
+                type="tel" 
+                name="contact"
+                autoComplete="off"
+                placeholder="9876543210" 
+                value={formData.contact}
+                onChange={handleChange}
+                required
+                className="w-full text-sm sm:text-base bg-white border border-[#E2D8CC] rounded-xl px-4 py-3 text-[#2C2621] focus:ring-2 focus:ring-[#6B1D2F] focus:outline-none transition shadow-sm"
+              />
             </div>
 
             <button 
               type="submit" 
               className="w-full bg-[#6B1D2F] hover:bg-[#521523] text-white font-extrabold py-3.5 rounded-xl text-base transition shadow-lg cursor-pointer mt-6"
             >
-              Continue to Credentials & Owner →
+              Continue to Credentials →
             </button>
           </form>
         )}
