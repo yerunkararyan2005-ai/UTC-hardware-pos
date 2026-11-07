@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { db } from './firebase';
+import { doc, setDoc, getDoc, collection, getDocs } from 'firebase/firestore';
 
-// Dynamic API Base URL configuration for Production (Render) & Local development
-// Direct Production API URL for Render
-const API_BASE_URL = 'https://utc-hardware-pos.onrender.com';
 export default function App() {
   const [currentView, setCurrentView] = useState(() => {
     return localStorage.getItem('utc_current_view') || 'register';
@@ -17,7 +16,6 @@ export default function App() {
     const saved = localStorage.getItem('utc_reg_data');
     return saved ? JSON.parse(saved) : {
       shopName: '',
-      shopEmail: '',
       shopId: '',
       ownerName: '',
       contactNumber: '',
@@ -31,8 +29,6 @@ export default function App() {
   });
 
   const [step, setStep] = useState(1);
-  const [enteredOtp, setEnteredOtp] = useState('');
-  const [sentOtp, setSentOtp] = useState(null);
   const [loading, setLoading] = useState(false);
   const [setupMpinInput, setSetupMpinInput] = useState('');
   const [showAgencyCode, setShowAgencyCode] = useState(false);
@@ -47,13 +43,10 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Categories: Agar products nahi hain toh categories bhi bilkul empty honi chahiye
   const [categories, setCategories] = useState(() => {
     const savedProds = localStorage.getItem('utc_products');
     const prods = savedProds ? JSON.parse(savedProds) : [];
-    if (prods.length === 0) {
-      return []; // Agar naya shop hai ya products zero hain, toh categories bhi 0 hongi
-    }
+    if (prods.length === 0) return [];
     const saved = localStorage.getItem('utc_categories');
     return saved ? JSON.parse(saved) : [];
   });
@@ -116,76 +109,71 @@ export default function App() {
       alert('Invalid UTC Master Agency Code! Please enter valid master code.');
       return;
     }
+    if (!regData.shopName || !regData.shopId || !regData.ownerName || !regData.contactNumber) {
+      alert('Please fill all required shop details!');
+      return;
+    }
     setStep(2);
   };
 
-  const handleOwnerDetailsSubmit = async (e) => {
+  const handleRegisterAndMpin = async (e) => {
     e.preventDefault();
-    if (!regData.shopEmail || !regData.username || !regData.password) {
-      alert('Please fill email, username, and password!');
-      return;
-    }
-    
-    try {
-      setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/api/send-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: regData.shopEmail })
-      });
-      const data = await response.json();
-      setLoading(false);
-
-      if (data.success) {
-        setSentOtp(data.otp);
-        setStep(3);
-        alert(`[UTC Secure] Real Email OTP sent successfully to ${regData.shopEmail}`);
-      } else {
-        alert('Failed to send email OTP: ' + data.error);
-      }
-    } catch (err) {
-      setLoading(false);
-      alert('Server connection error! Make sure backend server is running.');
-    }
-  };
-
-  const handleVerifyOtpAndMpin = async (e) => {
-    e.preventDefault();
-    if (parseInt(enteredOtp) !== sentOtp) {
-      alert('Invalid OTP!');
+    if (!regData.username || !regData.password) {
+      alert('Please fill username and password!');
       return;
     }
     if (!setupMpinInput || setupMpinInput.length !== 4) {
-      alert('Please enter a 4-digit MPIN.');
+      alert('Please enter a valid 4-digit MPIN.');
       return;
     }
     setMpin(setupMpinInput);
 
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/api/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(regData)
-      });
-      const data = await response.json();
-      setLoading(false);
+      const userRef = doc(db, 'users', regData.username);
+      const userSnap = await getDoc(userRef);
 
-      if (data.success) {
-        setProducts([]);
-        setInvoices([]);
-        setCategories([]);
-        localStorage.removeItem('utc_products');
-        localStorage.removeItem('utc_invoices');
-        localStorage.removeItem('utc_categories');
-        alert('Shop Registered Successfully under UTC Technology Solutions!');
-        setCurrentView('login');
-      } else {
-        alert('Registration Failed: ' + data.error);
+      if (userSnap.exists()) {
+        alert('Username already taken! Please choose another.');
+        setLoading(false);
+        return;
       }
+
+      // Save Shop in Firebase
+      await setDoc(doc(db, 'shops', regData.shopId), {
+        shopName: regData.shopName,
+        shopId: regData.shopId,
+        ownerName: regData.ownerName,
+        contact: regData.contactNumber,
+        address: regData.address,
+        gstin: regData.gstin,
+        description: regData.description,
+        isActive: true,
+        createdAt: new Date().toISOString()
+      });
+
+      // Save User Credentials in Firebase
+      await setDoc(userRef, {
+        username: regData.username,
+        password: regData.password,
+        shopId: regData.shopId,
+        role: 'OWNER',
+        createdAt: new Date().toISOString()
+      });
+
+      setLoading(false);
+      setProducts([]);
+      setInvoices([]);
+      setCategories([]);
+      localStorage.removeItem('utc_products');
+      localStorage.removeItem('utc_invoices');
+      localStorage.removeItem('utc_categories');
+
+      alert('Shop Registered Successfully under UTC Technology Solutions!');
+      setCurrentView('login');
     } catch (err) {
       setLoading(false);
-      alert('Server connection error! Make sure backend is running.');
+      alert('Firebase Registration Error: ' + err.message);
     }
   };
 
@@ -193,42 +181,47 @@ export default function App() {
     e.preventDefault();
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE_URL}/api/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginForm)
-      });
-      const data = await response.json();
-      setLoading(false);
+      const userRef = doc(db, 'users', loginForm.username);
+      const userSnap = await getDoc(userRef);
 
-      if (data.success) {
+      if (!userSnap.exists()) {
+        setLoading(false);
+        alert('Invalid Username or Password!');
+        return;
+      }
+
+      const userData = userSnap.data();
+      if (userData.password !== loginForm.password) {
+        setLoading(false);
+        alert('Invalid Username or Password!');
+        return;
+      }
+
+      const shopRef = doc(db, 'shops', userData.shopId);
+      const shopSnap = await getDoc(shopRef);
+
+      if (shopSnap.exists()) {
+        const shopData = shopSnap.data();
         setRegData({
           ...regData,
-          shopName: data.shop.shopName,
-          shopEmail: data.shop.email,
-          shopId: data.shop.shopId,
-          ownerName: data.shop.ownerName,
-          contactNumber: data.shop.contact,
-          address: data.shop.address,
-          gstin: data.shop.gstin,
-          description: data.shop.description
+          shopName: shopData.shopName,
+          shopId: shopData.shopId,
+          ownerName: shopData.ownerName,
+          contactNumber: shopData.contact,
+          address: shopData.address,
+          gstin: shopData.gstin,
+          description: shopData.description,
+          username: userData.username
         });
-        localStorage.setItem('utc_token', data.token);
-        
-        if (products.length === 0) {
-          setCategories([]);
-          localStorage.removeItem('utc_categories');
-        }
-
-        setCurrentView('dashboard');
-        setIsLocked(false);
-        setLoginForm({ username: '', password: '' });
-      } else {
-        alert(data.message || 'Invalid Username or Password!');
       }
+
+      setLoading(false);
+      setCurrentView('dashboard');
+      setIsLocked(false);
+      setLoginForm({ username: '', password: '' });
     } catch (err) {
       setLoading(false);
-      alert('Server connection error during login!');
+      alert('Firebase Login Error: ' + err.message);
     }
   };
 
@@ -406,8 +399,8 @@ export default function App() {
             <div class="line"></div>
             <div><b>Subtotal:</b> ₹${inv.subtotal.toFixed(2)}</div>
             ${inv.gstPercent > 0 ? `
-              <div><b>CGST (${inv.gstPercent/2}\%):</b> ₹${cgst}</div>
-              <div><b>SGST (${inv.gstPercent/2}\%):</b> ₹${sgst}</div>
+              <div><b>CGST (${inv.gstPercent/2}%):</b> ₹${cgst}</div>
+              <div><b>SGST (${inv.gstPercent/2}%):</b> ₹${sgst}</div>
             ` : ''}
             <div style="font-size: 13px;" class="bold">GRAND TOTAL: ₹${inv.total.toFixed(2)}</div>
             <div class="line"></div>
@@ -528,16 +521,6 @@ export default function App() {
                   <input type="text" name="shopId" autoComplete="off" placeholder="ENTER SHOP ID" value={regData.shopId} onChange={handleRegChange} required className="w-full text-sm border rounded-xl p-3 bg-white" />
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-[#595048] mb-1">Shop Email (For Real OTP) *</label>
-                <input type="email" name="shopEmail" autoComplete="off" placeholder="ENTER SHOP EMAIL I'D" value={regData.shopEmail} onChange={handleRegChange} required className="w-full text-sm border rounded-xl p-3 bg-white" />
-              </div>
-              <button type="submit" className="w-full bg-[#6B1D2F] text-white py-3 rounded-xl font-bold text-sm shadow cursor-pointer mt-2">Continue to Credentials & Owner →</button>
-            </form>
-          )}
-
-          {step === 2 && (
-            <form onSubmit={handleOwnerDetailsSubmit} autoComplete="off" className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-[#595048] mb-1">Owner Name *</label>
@@ -545,9 +528,15 @@ export default function App() {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-[#595048] mb-1">Contact Number *</label>
-                  <input type="tel" name="contactNumber" autoComplete="off" placeholder="ENTER OWNER CONTACT" value={regData.contactNumber} onChange={handleRegChange} required className="w-full text-sm border rounded-xl p-3 bg-white" />
+                  <input type="tel" name="contactNumber" autoComplete="off" placeholder="ENTER CONTACT" value={regData.contactNumber} onChange={handleRegChange} required className="w-full text-sm border rounded-xl p-3 bg-white" />
                 </div>
               </div>
+              <button type="submit" className="w-full bg-[#6B1D2F] text-white py-3 rounded-xl font-bold text-sm shadow cursor-pointer mt-2">Continue to Credentials →</button>
+            </form>
+          )}
+
+          {step === 2 && (
+            <form onSubmit={handleRegisterAndMpin} autoComplete="off" className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-[#595048] mb-1">Login Username *</label>
@@ -558,24 +547,14 @@ export default function App() {
                   <input type="password" name="password" autoComplete="new-password" placeholder="••••••••" value={regData.password} onChange={handleRegChange} required className="w-full text-sm border rounded-xl p-3 bg-white" />
                 </div>
               </div>
-              <div className="flex space-x-2 pt-2">
-                <button type="button" onClick={() => setStep(1)} className="w-1/3 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold text-sm">← Back</button>
-                <button type="submit" disabled={loading} className="w-2/3 bg-[#6B1D2F] text-white py-3 rounded-xl font-bold text-sm shadow cursor-pointer">{loading ? "Sending Real OTP..." : "Send Real Email OTP"}</button>
-              </div>
-            </form>
-          )}
-
-          {step === 3 && (
-            <form onSubmit={handleVerifyOtpAndMpin} autoComplete="off" className="space-y-4">
-              <div className="bg-[#FAF8F5] p-3 rounded-xl border text-center">
-                <p className="text-xs text-[#595048]">We have sent a real 4-digit code to your email:<br/><strong className="text-[#4A121F]">{regData.shopEmail}</strong></p>
-              </div>
-              <input type="text" maxLength="4" autoComplete="off" placeholder="1234" value={enteredOtp} onChange={(e) => setEnteredOtp(e.target.value)} required className="w-full text-center tracking-[0.5em] text-xl font-extrabold border rounded-xl p-3 bg-white" />
               <div>
                 <label className="block text-xs font-bold text-[#595048] mb-1">Setup 4-Digit MPIN (For Sleep/Lock) *</label>
                 <input type="password" maxLength="4" autoComplete="off" placeholder="••••" value={setupMpinInput} onChange={(e) => setSetupMpinInput(e.target.value)} required className="w-full text-center tracking-[0.5em] text-xl font-extrabold border rounded-xl p-3 bg-white" />
               </div>
-              <button type="submit" disabled={loading} className="w-full bg-[#6B1D2F] text-white py-3 rounded-xl font-bold text-sm shadow cursor-pointer">{loading ? "Registering Shop..." : "Verify & Complete Registration"}</button>
+              <div className="flex space-x-2 pt-2">
+                <button type="button" onClick={() => setStep(1)} className="w-1/3 bg-gray-200 text-gray-700 py-3 rounded-xl font-bold text-sm">← Back</button>
+                <button type="submit" disabled={loading} className="w-2/3 bg-[#6B1D2F] text-white py-3 rounded-xl font-bold text-sm shadow cursor-pointer">{loading ? "Registering on Firebase..." : "Complete Registration"}</button>
+              </div>
             </form>
           )}
 
@@ -1183,8 +1162,8 @@ export default function App() {
                 <input type="text" value={regData.contactNumber} onChange={(e) => setRegData({...regData, contactNumber: e.target.value})} className="w-full border rounded-xl p-2.5 bg-gray-50 font-medium" />
               </div>
               <div>
-                <label className="block font-bold text-gray-700 mb-1">Shop Email</label>
-                <input type="email" value={regData.shopEmail} onChange={(e) => setRegData({...regData, shopEmail: e.target.value})} className="w-full border rounded-xl p-2.5 bg-gray-50 font-medium" />
+                <label className="block font-bold text-gray-700 mb-1">Shop ID</label>
+                <input type="text" value={regData.shopId} disabled className="w-full border rounded-xl p-2.5 bg-gray-200 font-medium text-gray-500 cursor-not-allowed" />
               </div>
             </div>
 
