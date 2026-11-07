@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
-import { doc, setDoc, getDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, addDoc, getDocs, query, where, deleteDoc } from 'firebase/firestore';
 
 export default function App() {
   const [currentView, setCurrentView] = useState(() => {
@@ -37,20 +37,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('billing');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Products state
-  const [products, setProducts] = useState(() => {
-    const saved = localStorage.getItem('utc_products');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [categories, setCategories] = useState(() => {
-    const savedProds = localStorage.getItem('utc_products');
-    const prods = savedProds ? JSON.parse(savedProds) : [];
-    if (prods.length === 0) return [];
-    const saved = localStorage.getItem('utc_categories');
-    return saved ? JSON.parse(saved) : [];
-  });
-
+  // Products & Categories state
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("All");
 
   const [newProd, setNewProd] = useState({ name: '', category: '', price: '', stock: '', unit: 'Pcs', image: '' });
@@ -90,14 +79,40 @@ export default function App() {
   useEffect(() => { localStorage.setItem('utc_current_view', currentView); }, [currentView]);
   useEffect(() => { localStorage.setItem('utc_reg_data', JSON.stringify(regData)); }, [regData]);
   useEffect(() => { localStorage.setItem('utc_mpin', mpin); }, [mpin]);
-  useEffect(() => { localStorage.setItem('utc_categories', JSON.stringify(categories)); }, [categories]);
-  useEffect(() => { localStorage.setItem('utc_products', JSON.stringify(products)); }, [products]);
   useEffect(() => { localStorage.setItem('utc_settings', JSON.stringify(settings)); }, [settings]);
   useEffect(() => { localStorage.setItem('utc_invoices', JSON.stringify(invoices)); }, [invoices]);
 
   useEffect(() => {
     setBillGstPercent(settings.gstPercent);
   }, [settings.gstPercent]);
+
+  // Fetch products and categories from Firebase Firestore whenever shopId changes
+  useEffect(() => {
+    const fetchShopDataFromFirebase = async () => {
+      if (!regData.shopId) return;
+      try {
+        const q = query(collection(db, "products"), where("shopId", "==", regData.shopId));
+        const querySnapshot = await getDocs(q);
+        const loadedProducts = [];
+        const loadedCategories = new Set();
+
+        querySnapshot.forEach((docSnap) => {
+          const prod = { firestoreId: docSnap.id, ...docSnap.data() };
+          loadedProducts.push(prod);
+          if (prod.category) loadedCategories.add(prod.category);
+        });
+
+        setProducts(loadedProducts);
+        setCategories(Array.from(loadedCategories));
+      } catch (err) {
+        console.error("Error fetching products from Firebase:", err);
+      }
+    };
+
+    if (currentView === 'dashboard') {
+      fetchShopDataFromFirebase();
+    }
+  }, [regData.shopId, currentView]);
 
   const handleRegChange = (e) => {
     setRegData({ ...regData, [e.target.name]: e.target.value });
@@ -139,7 +154,6 @@ export default function App() {
         return;
       }
 
-      // Save Shop in Firebase
       await setDoc(doc(db, 'shops', regData.shopId), {
         shopName: regData.shopName,
         shopId: regData.shopId,
@@ -152,7 +166,6 @@ export default function App() {
         createdAt: new Date().toISOString()
       });
 
-      // Save User Credentials in Firebase
       await setDoc(userRef, {
         username: regData.username,
         password: regData.password,
@@ -165,9 +178,7 @@ export default function App() {
       setProducts([]);
       setInvoices([]);
       setCategories([]);
-      localStorage.removeItem('utc_products');
       localStorage.removeItem('utc_invoices');
-      localStorage.removeItem('utc_categories');
 
       alert('Shop Registered Successfully under UTC Technology Solutions!');
       setCurrentView('login');
@@ -202,7 +213,7 @@ export default function App() {
 
       if (shopSnap.exists()) {
         const shopData = shopSnap.data();
-        setRegData({
+        const updatedReg = {
           ...regData,
           shopName: shopData.shopName,
           shopId: shopData.shopId,
@@ -212,7 +223,9 @@ export default function App() {
           gstin: shopData.gstin,
           description: shopData.description,
           username: userData.username
-        });
+        };
+        setRegData(updatedReg);
+        localStorage.setItem('utc_reg_data', JSON.stringify(updatedReg));
       }
 
       setLoading(false);
@@ -233,7 +246,7 @@ export default function App() {
     }
   };
 
-  const handleAddNewProduct = (e) => {
+  const handleAddNewProduct = async (e) => {
     e.preventDefault();
     let finalCat = newProd.category;
     if (finalCat === 'add_new' || !finalCat) {
@@ -254,6 +267,7 @@ export default function App() {
 
     const productObj = {
       id: Date.now(),
+      shopId: regData.shopId,
       name: newProd.name,
       category: finalCat,
       price: parseFloat(newProd.price),
@@ -262,22 +276,37 @@ export default function App() {
       image: newProd.image || ''
     };
 
-    setProducts([...products, productObj]);
-    setNewProd({ name: '', category: '', price: '', stock: '', unit: 'Pcs', image: '' });
-    setCustomCategoryInput('');
-    alert("Product added successfully!");
-    setActiveTab('billing');
-  };
-
-  const handleDeleteProduct = (id) => {
-    if (confirm("Are you sure you want to delete this product?")) {
-      setProducts(products.filter(p => p.id !== id));
+    try {
+      setLoading(true);
+      await addDoc(collection(db, "products"), productObj);
+      setProducts([...products, productObj]);
+      setNewProd({ name: '', category: '', price: '', stock: '', unit: 'Pcs', image: '' });
+      setCustomCategoryInput('');
+      setLoading(false);
+      alert("Product added & synced across all devices successfully!");
+      setActiveTab('billing');
+    } catch (err) {
+      setLoading(false);
+      alert("Error saving product to Firebase: " + err.message);
     }
   };
 
-  const handleSaveEditProduct = (id) => {
+  const handleDeleteProduct = async (firestoreId, id) => {
+    if (confirm("Are you sure you want to delete this product?")) {
+      try {
+        if (firestoreId) {
+          await deleteDoc(doc(db, "products", firestoreId));
+        }
+        setProducts(products.filter(p => p.id !== id));
+      } catch (err) {
+        alert("Error deleting product: " + err.message);
+      }
+    }
+  };
+
+  const handleSaveEditProduct = async (product) => {
     setProducts(products.map(p => {
-      if (p.id === id) {
+      if (p.id === product.id) {
         return {
           ...p,
           name: editForm.name.trim() !== '' ? editForm.name : p.name,
@@ -875,7 +904,9 @@ export default function App() {
               }} className="w-full border rounded-xl p-2.5 bg-gray-50 font-medium text-xs cursor-pointer" />
             </div>
 
-            <button type="submit" className="w-full bg-[#6B1D2F] text-white py-3.5 rounded-xl font-extrabold text-sm shadow cursor-pointer">Save & Add Product to Inventory</button>
+            <button type="submit" disabled={loading} className="w-full bg-[#6B1D2F] text-white py-3.5 rounded-xl font-extrabold text-sm shadow cursor-pointer">
+              {loading ? "Saving to Cloud..." : "Save & Add Product to Inventory"}
+            </button>
           </form>
         </div>
       )}
@@ -944,11 +975,11 @@ export default function App() {
                         </td>
                         <td className="p-3 text-right space-x-1 sm:space-x-2">
                           {isEditing ? (
-                            <button onClick={() => handleSaveEditProduct(p.id)} className="bg-emerald-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer">Save ✅</button>
+                            <button onClick={() => handleSaveEditProduct(p)} className="bg-emerald-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer">Save ✅</button>
                           ) : (
                             <button onClick={() => { setEditingProductId(p.id); setEditForm({ name: p.name, price: p.price, stock: p.stock }); }} className="bg-blue-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer">Edit ✏️</button>
                           )}
-                          <button onClick={() => handleDeleteProduct(p.id)} className="bg-red-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer">Delete 🗑️</button>
+                          <button onClick={() => handleDeleteProduct(p.firestoreId, p.id)} className="bg-red-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer">Delete 🗑️</button>
                         </td>
                       </tr>
                     );
