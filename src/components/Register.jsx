@@ -221,7 +221,7 @@ export default function Register({ onRegisterSuccess }) {
                 disabled={loading}
                 className="w-2/3 bg-[#6B1D2F] hover:bg-[#521523] text-white font-extrabold py-3.5 rounded-xl text-base transition shadow-lg cursor-pointer"
               >
-                {loading ? "Registering Shop..." : "Verify & Complete Registration"}
+                {loading ? "Registering Shop..." : "Complete Registration"}
               </button>
             </div>
           </form>
