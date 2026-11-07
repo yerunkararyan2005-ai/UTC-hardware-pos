@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from './firebase';
-import { doc, setDoc, getDoc, collection, addDoc, getDocs, query, where, deleteDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, addDoc, onSnapshot, query, where, deleteDoc } from 'firebase/firestore';
 
 export default function App() {
   const [currentView, setCurrentView] = useState(() => {
@@ -87,33 +87,29 @@ export default function App() {
     setBillGstPercent(settings.gstPercent);
   }, [settings.gstPercent]);
 
-  // Fetch products from Firebase Firestore
+  // Real-time Firestore Listener (onSnapshot) for Instant Cross-Device Sync without Refresh
   useEffect(() => {
-    const fetchShopDataFromFirebase = async () => {
-      if (!regData.shopId) return;
-      try {
-        const q = query(collection(db, "products"), where("shopId", "==", regData.shopId));
-        const querySnapshot = await getDocs(q);
-        const loadedProducts = [];
-        const loadedCategories = new Set();
+    if (!regData.shopId) return;
 
-        querySnapshot.forEach((docSnap) => {
-          const prod = { firestoreId: docSnap.id, ...docSnap.data() };
-          loadedProducts.push(prod);
-          if (prod.category) loadedCategories.add(prod.category);
-        });
+    const q = query(collection(db, "products"), where("shopId", "==", regData.shopId));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const loadedProducts = [];
+      const loadedCategories = new Set();
 
-        setProducts(loadedProducts);
-        setCategories(Array.from(loadedCategories));
-      } catch (err) {
-        console.error("Error fetching products from Firebase:", err);
-      }
-    };
+      querySnapshot.forEach((docSnap) => {
+        const prod = { firestoreId: docSnap.id, ...docSnap.data() };
+        loadedProducts.push(prod);
+        if (prod.category) loadedCategories.add(prod.category);
+      });
 
-    if (currentView === 'dashboard') {
-      fetchShopDataFromFirebase();
-    }
-  }, [regData.shopId, currentView]);
+      setProducts(loadedProducts);
+      setCategories(Array.from(loadedCategories));
+    }, (err) => {
+      console.error("Error with real-time product listener:", err);
+    });
+
+    return () => unsubscribe();
+  }, [regData.shopId]);
 
   const handleRegChange = (e) => {
     setRegData({ ...regData, [e.target.name]: e.target.value });
@@ -280,11 +276,10 @@ export default function App() {
     try {
       setLoading(true);
       await addDoc(collection(db, "products"), productObj);
-      setProducts([...products, productObj]);
       setNewProd({ name: '', category: '', price: '', stock: '', unit: 'Pcs', image: '' });
       setCustomCategoryInput('');
       setLoading(false);
-      alert("Product added & synced across all devices successfully!");
+      alert("Product added successfully! It will instantly appear on all logged-in devices.");
       setActiveTab('billing');
     } catch (err) {
       setLoading(false);
@@ -298,7 +293,6 @@ export default function App() {
         if (firestoreId) {
           await deleteDoc(doc(db, "products", firestoreId));
         }
-        setProducts(products.filter(p => p.id !== id));
       } catch (err) {
         alert("Error deleting product: " + err.message);
       }
@@ -306,17 +300,6 @@ export default function App() {
   };
 
   const handleSaveEditProduct = async (product) => {
-    setProducts(products.map(p => {
-      if (p.id === product.id) {
-        return {
-          ...p,
-          name: editForm.name.trim() !== '' ? editForm.name : p.name,
-          price: !isNaN(parseFloat(editForm.price)) ? parseFloat(editForm.price) : p.price,
-          stock: !isNaN(parseInt(editForm.stock, 10)) ? parseInt(editForm.stock, 10) : p.stock
-        };
-      }
-      return p;
-    }));
     setEditingProductId(null);
   };
 
@@ -474,17 +457,6 @@ export default function App() {
       mode: paymentMode
     };
 
-    if (settings.stockCheckEnabled) {
-      const updatedProds = products.map(p => {
-        const cartItem = cart.find(ci => ci.id === p.id);
-        if (cartItem) {
-          return { ...p, stock: Math.max(0, p.stock - (parseInt(cartItem.qty, 10) || 0)) };
-        }
-        return p;
-      });
-      setProducts(updatedProds);
-    }
-
     setInvoices([newInvoice, ...invoices]);
     triggerPrintReceipt(newInvoice);
 
@@ -501,10 +473,15 @@ export default function App() {
 
   // Instant Search & Category Filtering Logic
   const filteredProducts = products.filter(p => {
-    const matchesCategory = selectedCategory === "All" || p.category === selectedCategory;
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const matchesSearch = searchQuery.trim() === "" || 
+                          p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           p.category.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
+    
+    if (searchQuery.trim() !== "") {
+      return matchesSearch; 
+    }
+    
+    return selectedCategory === "All" || p.category === selectedCategory;
   });
 
   const filteredInvoices = invoices.filter(inv => {
